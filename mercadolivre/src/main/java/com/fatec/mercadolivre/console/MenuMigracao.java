@@ -22,35 +22,43 @@ public class MenuMigracao {
     public void exibirMenu(Object usuarioAtual) {
         while (true) {
             System.out.println("\n--- Menu de Sincronização (EX3) ---");
-            System.out.println("1. 📤 Migrar Produtos do MongoDB para o REDIS (Cache)");
-            System.out.println("2. 🔄 Sincronizar REDIS -> MONGODB (Commitar Mudanças)");
-            System.out.println("3. 🔙 Voltar ao Menu Principal");
+            System.out.println("1. 📤 (Passo A) Migrar Produtos do MongoDB para o REDIS");
+            System.out.println("2. ✏️ (Passo B) Manipular Produtos no REDIS (Via Menu Produtos)");
+            System.out.println("3. 🔄 (Passo C) Sincronizar REDIS -> MONGODB (Commitar)");
+            System.out.println("4. 🔙 Voltar ao Menu Principal");
 
+            System.out.print("Escolha: ");
             String escolha = scanner.nextLine();
 
             switch (escolha) {
-                case "1": migrarMongoParaRedis(); break;
-                case "2": sincronizarRedisParaMongo(); break;
-                case "3": return;
-                default: System.out.println("Opção inválida.");
+                case "1":
+                    migrarMongoParaRedis();
+                    break;
+                case "2":
+                    System.out.println(">> Abrindo Menu de Produtos (Itens editados estão em Cache!)...");
+                    menuProdutos.exibirMenu(usuarioAtual);
+                    break;
+                case "3":
+                    sincronizarRedisParaMongo();
+                    break;
+                case "4":
+                    return;
+                default:
+                    System.out.println("Opção inválida.");
             }
         }
     }
 
-    /**
-     * Implementa a lógica 'Retirar do MongoDB e colocar no Redis' [cite: 10]
-     */
     private void migrarMongoParaRedis() {
         System.out.println("\n--- Selecione Produtos para Migrar para o REDIS ---");
 
-        List<Produto> produtosMongo = produtoService.listarTodosMongo(); // Lista do MongoDB
+        List<Produto> produtosMongo = produtoService.listarTodosMongo();
         if (produtosMongo.isEmpty()) {
             System.out.println("Nenhum produto encontrado no MongoDB para migração.");
             return;
         }
 
         List<String> idsParaMigrar = new ArrayList<>();
-        // Lógica simples: migrar os 3 primeiros itens ou um item novo (EX3 )
         int maxItens = Math.min(3, produtosMongo.size());
 
         System.out.printf("Migrando os primeiros %d produtos encontrados para manipulação no cache...\n", maxItens);

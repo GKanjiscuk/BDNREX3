@@ -22,7 +22,6 @@ public class Cliente {
     private LocalDateTime createAt;
     private List<Endereco> enderecos;
 
-    @DBRef
     private List<Produto> favoritos;
 
 }

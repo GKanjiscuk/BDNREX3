@@ -3,8 +3,10 @@ package com.fatec.mercadolivre.service;
 import com.fatec.mercadolivre.model.entidades.Cliente;
 import com.fatec.mercadolivre.model.entidades.Endereco;
 import com.fatec.mercadolivre.model.entidades.Produto;
+import com.fatec.mercadolivre.model.entidades.redis.ProdutoRedis;
 import com.fatec.mercadolivre.repository.ClienteRepository;
 import com.fatec.mercadolivre.repository.ProdutoRepository;
+import com.fatec.mercadolivre.repository.ProdutoRedisRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -23,12 +25,14 @@ public class ClienteService {
     @Autowired
     private ProdutoRepository produtoRepository;
 
+    @Autowired
+    private ProdutoRedisRepository produtoRedisRepository;
+
     @Autowired private SecurityService securityService;
 
     public Cliente criarCliente(Cliente cliente, List<Endereco> enderecos) {
         cliente.setCreateAt(LocalDateTime.now());
 
-        // CORREÇÃO: Agora 'securityService' é reconhecido e a senha é criptografada
         if (cliente.getSenha() != null && !cliente.getSenha().isEmpty()) {
             String senhaHash = securityService.criptografarSenha(cliente.getSenha());
             cliente.setSenha(senhaHash);
@@ -41,24 +45,18 @@ public class ClienteService {
 
         enderecos.forEach(e -> e.setEnderecoId(UUID.randomUUID().toString()));
         cliente.setEnderecos(enderecos);
-
         cliente.setFavoritos(new ArrayList<>());
 
         return clienteRepository.save(cliente);
     }
+
     public Cliente atualizarCliente(String id, Cliente novosDados) {
         Optional<Cliente> clienteOpt = clienteRepository.findById(id);
 
         if (clienteOpt.isPresent()) {
             Cliente clienteAtual = clienteOpt.get();
-
-            if (novosDados.getNome() != null) {
-                clienteAtual.setNome(novosDados.getNome());
-            }
-            if (novosDados.getEmail() != null) {
-                clienteAtual.setEmail(novosDados.getEmail());
-            }
-
+            if (novosDados.getNome() != null) clienteAtual.setNome(novosDados.getNome());
+            if (novosDados.getEmail() != null) clienteAtual.setEmail(novosDados.getEmail());
             return clienteRepository.save(clienteAtual);
         }
         return null;
@@ -82,21 +80,39 @@ public class ClienteService {
 
     public boolean adicionarFavorito(String clienteId, String produtoId) {
         Optional<Cliente> clienteOpt = clienteRepository.findById(clienteId);
-        Optional<Produto> produtoOpt = produtoRepository.findById(produtoId);
 
-        if (clienteOpt.isPresent() && produtoOpt.isPresent()) {
+        Produto produtoParaAdicionar = null;
+
+        Optional<Produto> mongoOpt = produtoRepository.findById(produtoId);
+        if (mongoOpt.isPresent()) {
+            produtoParaAdicionar = mongoOpt.get();
+        }
+        else {
+            Optional<ProdutoRedis> redisOpt = produtoRedisRepository.findById(produtoId);
+            if (redisOpt.isPresent()) {
+                ProdutoRedis pr = redisOpt.get();
+                produtoParaAdicionar = new Produto();
+                produtoParaAdicionar.setId(pr.getId());
+                produtoParaAdicionar.setNome(pr.getNome());
+                produtoParaAdicionar.setPreco(pr.getPreco());
+                produtoParaAdicionar.setDescricao(pr.getDescricao());
+
+            }
+        }
+
+        if (clienteOpt.isPresent() && produtoParaAdicionar != null) {
             Cliente cliente = clienteOpt.get();
-            Produto produto = produtoOpt.get();
 
             if (cliente.getFavoritos() == null) {
                 cliente.setFavoritos(new ArrayList<>());
             }
 
+            Produto finalProduto = produtoParaAdicionar;
             boolean jaExiste = cliente.getFavoritos().stream()
-                    .anyMatch(f -> f.getId().equals(produtoId));
+                    .anyMatch(f -> f.getId().equals(finalProduto.getId()));
 
             if (!jaExiste) {
-                cliente.getFavoritos().add(produto);
+                cliente.getFavoritos().add(produtoParaAdicionar);
                 clienteRepository.save(cliente);
                 return true;
             }

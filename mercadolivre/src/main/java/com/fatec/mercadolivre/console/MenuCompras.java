@@ -2,7 +2,7 @@ package com.fatec.mercadolivre.console;
 
 import com.fatec.mercadolivre.model.entidades.Compra;
 import com.fatec.mercadolivre.model.entidades.ItemCompra;
-import com.fatec.mercadolivre.model.entidades.Produto;
+import com.fatec.mercadolivre.model.entidades.redis.ProdutoRedis; // Importante: Importar o modelo do Redis
 import com.fatec.mercadolivre.service.CompraService;
 import com.fatec.mercadolivre.service.ProdutoService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +46,7 @@ public class MenuCompras {
     }
 
     /**
-     * Substitui a lógica de novaCompra.py
+     * Lógica ajustada para buscar dados do CACHE (Redis) ao invés do Mongo direto
      */
     private void criarCompra() {
         String clienteId = menuClientes.selecionarClienteId();
@@ -59,6 +59,7 @@ public class MenuCompras {
         System.out.println("\n--- Adicionar Produtos à Compra ---");
 
         while (true) {
+            // O MenuProdutos lista o que está no Redis
             String produtoId = menuProdutos.selecionarProdutoId();
 
             if (produtoId == null) {
@@ -66,14 +67,17 @@ public class MenuCompras {
                 break;
             }
 
-            Optional<Produto> produtoOpt = produtoService.buscarPorIdMongo(produtoId);
+            // CORREÇÃO CRÍTICA: Buscar no Redis, pois o ID veio da lista do Redis
+            Optional<ProdutoRedis> produtoOpt = produtoService.buscarPorIdRedis(produtoId);
+
             if (produtoOpt.isEmpty()) {
-                System.out.println("Produto não encontrado. Tente novamente.");
+                System.out.println("Produto não encontrado no Cache/Redis. Tente sincronizar o banco.");
                 continue;
             }
-            Produto p = produtoOpt.get();
 
-            System.out.printf("Quantidade de '%s': ", p.getNome());
+            ProdutoRedis p = produtoOpt.get();
+
+            System.out.printf("Quantidade de '%s' (Preço: R$%.2f): ", p.getNome(), p.getPreco());
             try {
                 int quantidade = Integer.parseInt(scanner.nextLine());
                 if (quantidade <= 0) throw new NumberFormatException();
@@ -83,10 +87,12 @@ public class MenuCompras {
                 item.setNomeProduto(p.getNome());
                 item.setPrecoUnitario(p.getPreco());
                 item.setQuantidade(quantidade);
-                item.setVendedorId(p.getVendedor() != null ? p.getVendedor().getId() : "N/A");
+
+                // No Redis, o ID do vendedor geralmente é salvo como String direta
+                item.setVendedorId(p.getVendedorId());
 
                 itens.add(item);
-                System.out.printf("Produto adicionado. Subtotal: R$%.2f\n", p.getPreco() * quantidade);
+                System.out.printf("Produto adicionado. Subtotal parcial: R$%.2f\n", p.getPreco() * quantidade);
 
             } catch (NumberFormatException e) {
                 System.out.println("Quantidade inválida. Por favor, digite um número inteiro positivo.");
@@ -100,15 +106,12 @@ public class MenuCompras {
 
         try {
             Compra nova = compraService.registrarNovaCompra(clienteId, itens);
-            System.out.printf("\nCompra registrada com sucesso! ID:%s, Total: R$%.2f\n", nova.getId(), nova.getTotal());
-        } catch (IllegalArgumentException e) {
-            System.out.println("Erro ao registrar compra: " + e.getMessage());
+            System.out.printf("\n✅ Compra registrada com sucesso! ID:%s, Total: R$%.2f\n", nova.getId(), nova.getTotal());
+        } catch (Exception e) { // Catch genérico para pegar erros de serviço
+            System.out.println("❌ Erro ao registrar compra: " + e.getMessage());
         }
     }
 
-    /**
-     * Substitui a lógica de lerCompra.py
-     */
     private void lerCompra() {
         String compraId = selecionarCompraId();
         if (compraId == null) return;
@@ -131,9 +134,6 @@ public class MenuCompras {
         }
     }
 
-    /**
-     * Substitui o selecionarCompra do Python
-     */
     private String selecionarCompraId() {
         List<Compra> compras = compraService.listarTodas();
         if (compras.isEmpty()) {
@@ -170,9 +170,6 @@ public class MenuCompras {
         }
     }
 
-    /**
-     * Substitui o listarComprasCliente do Python
-     */
     private void listarComprasCliente() {
         String clienteId = menuClientes.selecionarClienteId();
         if (clienteId == null) return;
@@ -194,9 +191,6 @@ public class MenuCompras {
         });
     }
 
-    /**
-     * Substitui o listarTodasCompras do Python
-     */
     private void listarTodasCompras() {
         System.out.println("--- Todas as Compras ---");
         List<Compra> compras = compraService.listarTodas();

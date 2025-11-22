@@ -2,16 +2,17 @@ package com.fatec.mercadolivre.console;
 
 import com.fatec.mercadolivre.model.entidades.Cliente;
 import com.fatec.mercadolivre.model.entidades.Endereco;
-import com.fatec.mercadolivre.model.entidades.Produto;
 import com.fatec.mercadolivre.service.ClienteService;
 import com.fatec.mercadolivre.service.ProdutoService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Scanner;
+import java.util.UUID;
 
 @Component
 public class MenuClientes {
@@ -21,6 +22,12 @@ public class MenuClientes {
 
     @Autowired
     private ProdutoService produtoService;
+
+    // Injetamos o MenuProdutos para listar os produtos disponíveis ao adicionar favoritos
+    // @Lazy evita referência circular caso MenuProdutos precise de MenuClientes no futuro
+    @Autowired
+    @Lazy
+    private MenuProdutos menuProdutos;
 
     private final Scanner scanner = new Scanner(System.in);
 
@@ -49,25 +56,46 @@ public class MenuClientes {
         }
     }
 
-
     private void criarCliente() {
         System.out.println("\n-- Cadastro de Novos Clientes --");
         Cliente c = new Cliente();
         System.out.print("Nome completo: "); c.setNome(scanner.nextLine());
         System.out.print("CPF: "); c.setCpf(scanner.nextLine());
         System.out.print("E-mail: "); c.setEmail(scanner.nextLine());
+        System.out.print("Senha: "); c.setSenha(scanner.nextLine());
 
+        // Coleta o endereço conforme a sua nova entidade (Estado, Cidade, CEP)
         List<Endereco> enderecos = coletarEnderecos();
+
         try {
             Cliente novo = clienteService.criarCliente(c, enderecos);
-            System.out.println("Cliente criado com sucesso! ID: " + novo.getId());
+            System.out.println("✅ Cliente criado com sucesso! ID: " + novo.getId());
         } catch (Exception e) {
-            System.out.println("Erro ao criar cliente: " + e.getMessage());
+            System.out.println("❌ Erro ao criar cliente: " + e.getMessage());
         }
     }
 
     private List<Endereco> coletarEnderecos() {
-        return new ArrayList<>();
+        List<Endereco> listaEnderecos = new ArrayList<>();
+        System.out.println("\n--- Cadastro de Endereço Principal ---");
+
+        Endereco endereco = new Endereco();
+        endereco.setEnderecoId(UUID.randomUUID().toString());
+
+        // Campos ajustados para sua entidade
+        System.out.print("Estado (UF): ");
+        endereco.setEstado(scanner.nextLine());
+
+        System.out.print("Cidade: ");
+        endereco.setCidade(scanner.nextLine());
+
+        System.out.print("CEP: ");
+        endereco.setCep(scanner.nextLine());
+
+        endereco.setPrincipal(true);
+
+        listaEnderecos.add(endereco);
+        return listaEnderecos;
     }
 
     private void lerClienteDetalhado() {
@@ -80,12 +108,21 @@ public class MenuClientes {
             System.out.println("\n--- Dados Completos do Cliente ---");
             System.out.println("ID: " + cliente.getId());
             System.out.println("Nome: " + cliente.getNome());
+            System.out.println("CPF: " + cliente.getCpf());
             System.out.println("E-mail: " + cliente.getEmail());
+
+            System.out.println("\n--- Endereços ---");
+            if (cliente.getEnderecos() != null) {
+                cliente.getEnderecos().forEach(e ->
+                        System.out.printf("  - %s / %s (CEP: %s) [Principal: %s]\n",
+                                e.getCidade(), e.getEstado(), e.getCep(), e.isPrincipal() ? "Sim" : "Não")
+                );
+            }
 
             System.out.println("\n--- Produtos Favoritos ---");
             if (cliente.getFavoritos() != null && !cliente.getFavoritos().isEmpty()) {
                 cliente.getFavoritos().forEach(produto -> {
-                    System.out.println("  - " + produto.getNome() + " (ID: " + produto.getId() + ")");
+                    System.out.println("  ★ " + produto.getNome() + " (ID: " + produto.getId() + ")");
                 });
             } else {
                 System.out.println("Nenhum produto favorito cadastrado.");
@@ -99,15 +136,22 @@ public class MenuClientes {
         String id = selecionarClienteId();
         if (id == null) return;
 
-        System.out.print("Novo e-mail: ");
+        System.out.print("Novo e-mail (ENTER para manter atual): ");
+        String novoEmail = scanner.nextLine();
+
+        if (novoEmail.trim().isEmpty()) {
+            System.out.println("Operação cancelada.");
+            return;
+        }
+
         Cliente novosDados = new Cliente();
-        novosDados.setEmail(scanner.nextLine());
+        novosDados.setEmail(novoEmail);
 
         Cliente atualizado = clienteService.atualizarCliente(id, novosDados);
         if (atualizado != null) {
             System.out.println("Cliente atualizado com sucesso.");
         } else {
-            System.out.println("Falha ao atualizar cliente ou cliente não encontrado.");
+            System.out.println("Falha ao atualizar cliente.");
         }
     }
 
@@ -118,7 +162,7 @@ public class MenuClientes {
         if (clienteService.deletarCliente(id)) {
             System.out.println("Cliente deletado com sucesso.");
         } else {
-            System.out.println("Falha ao deletar cliente ou cliente não encontrado.");
+            System.out.println("Falha ao deletar cliente.");
         }
     }
 
@@ -138,36 +182,32 @@ public class MenuClientes {
 
         System.out.println("\n--- Selecione o Cliente ---");
         for (int i = 0; i < clientes.size(); i++) {
-            System.out.printf("%d. Nome: %s, ID: %s\n", (i + 1), clientes.get(i).getNome(), clientes.get(i).getId());
+            System.out.printf("%d. Nome: %s (ID: %s)\n", (i + 1), clientes.get(i).getNome(), clientes.get(i).getId());
         }
 
-        System.out.print("Digite o número do cliente (ou '0' para cancelar): ");
+        System.out.print("Digite o número correspondente (ou '0' para cancelar): ");
         String escolha = scanner.nextLine();
 
-        if (escolha.equals("0")) {
-            return null;
-        }
+        if (escolha.equals("0")) return null;
 
         try {
             int indice = Integer.parseInt(escolha) - 1;
             if (indice >= 0 && indice < clientes.size()) {
                 return clientes.get(indice).getId();
-            } else {
-                System.out.println("Opção inválida.");
-                return null;
             }
-        } catch (NumberFormatException e) {
-            System.out.println("Opção inválida. Digite um número.");
-            return null;
-        }
+        } catch (NumberFormatException ignored) {}
+
+        System.out.println("Opção inválida.");
+        return null;
     }
 
+    // --- LÓGICA DE FAVORITOS ---
 
     private void menuFavoritos() {
         while (true) {
             System.out.println("\n--- Gerenciar Favoritos ---");
-            System.out.println("1. Adicionar Produto Favorito");
-            System.out.println("2. Remover Produto Favorito");
+            System.out.println("1. Adicionar Produto aos Favoritos");
+            System.out.println("2. Remover Produto dos Favoritos");
             System.out.println("3. Voltar ao Menu de Clientes");
 
             String escolha = scanner.nextLine();
@@ -184,25 +224,28 @@ public class MenuClientes {
     }
 
     private void gerenciarFavorito(boolean adicionar) {
+        System.out.println("Selecione o Cliente dono da lista de favoritos:");
         String clienteId = selecionarClienteId();
         if (clienteId == null) return;
 
-        String produtoId = null;
+        System.out.println("\nAgora selecione o produto:");
+        // Chamamos o MenuProdutos (injetado) para listar e selecionar o ID correto do Redis
+        String produtoId = menuProdutos.selecionarProdutoId();
 
-        if (produtoId == null) return;
+        if (produtoId == null) {
+            System.out.println("Operação cancelada.");
+            return;
+        }
 
+        boolean sucesso;
         if (adicionar) {
-            if (clienteService.adicionarFavorito(clienteId, produtoId)) {
-                System.out.println("Produto adicionado aos favoritos com sucesso.");
-            } else {
-                System.out.println("Falha ao adicionar favorito (talvez já exista).");
-            }
+            sucesso = clienteService.adicionarFavorito(clienteId, produtoId);
+            if (sucesso) System.out.println("✅ Produto adicionado aos favoritos!");
+            else System.out.println("❌ Não foi possível adicionar (o produto talvez já esteja na lista).");
         } else {
-            if (clienteService.removerFavorito(clienteId, produtoId)) {
-                System.out.println("Produto removido dos favoritos com sucesso.");
-            } else {
-                System.out.println("Falha ao remover favorito (talvez não exista).");
-            }
+            sucesso = clienteService.removerFavorito(clienteId, produtoId);
+            if (sucesso) System.out.println("✅ Produto removido dos favoritos!");
+            else System.out.println("❌ Não foi possível remover (o produto não estava na lista).");
         }
     }
 }
